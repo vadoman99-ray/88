@@ -88,6 +88,7 @@ body.modal-open { overflow: hidden; position: fixed; width: 100%; height: 100%; 
 .detail-row { font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; color: #94a3b8; margin-top: 4px; } 
 
 .badge-rank { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; background: rgba(255, 255, 255, 0.1); color: #fff; } 
+.badge-bull-trend { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; background: rgba(0, 240, 255, 0.15); color: var(--manga-cyan); border: 1px solid var(--manga-cyan); }
 .badge-bull { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; background: rgba(0, 255, 102, 0.15); color: var(--manga-green); border: 1px solid var(--manga-green); }
 .badge-rsi { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; background: rgba(255, 0, 127, 0.15); color: var(--manga-pink); border: 1px solid var(--manga-pink); }
 .val-up { color: var(--manga-green); } 
@@ -276,7 +277,7 @@ canvas { display: block; width: 100%; height: 100%; }
       const topResults = results.slice(0, 10);
       topResults.forEach((item, index) => {
         const chgSign = item.priceChange24h >= 0 ? '+' : '';
-        message += `<b>#${index + 1} ${item.symbol.replace('USDT', '')}</b>\n`;
+        message += `<b>#${index + 1} ${item.symbol.replace('USDT', '')}</b> [符合1h多頭列]\n`;
         message += `• 價格：<code>${item.price}</code> USDT\n`;
         message += `• 5RSI / 20RSI：<b>${item.rsi5.toFixed(1)} / ${item.rsi20.toFixed(1)}</b>\n`;
         message += `• 距 60MA：<b>+${item.ma3DistPercent.toFixed(2)}%</b>\n`;
@@ -379,7 +380,8 @@ canvas { display: block; width: 100%; height: 100%; }
       const currMA60 = ma60Arr[totalLen - 1]; 
       const prevMA5 = ma5Arr[totalLen - 2];
 
-      if (!(currMA5 > currMA30 && currMA30 > currMA45 && currMA45 > currMA60 && currClose >= currMA60)) return null; 
+      const isBullTrend = (currMA5 > currMA30 && currMA30 > currMA45 && currMA45 > currMA60 && currClose >= currMA60);
+      if (!isBullTrend) return null; 
 
       const isPullback = (prevLow < prevMA5 || prevClose < prevMA5 || lows[totalLen - 1] < currMA5);
       if (!isPullback) return null;
@@ -404,7 +406,7 @@ canvas { display: block; width: 100%; height: 100%; }
       const ticker = tickerMap.get(symbol);
       const priceChange24h = ticker ? parseFloat(ticker.priceChangePercent) : 0; 
 
-      return { symbol, price: currClose, ma3DistPercent, priceChange24h, rsi5: currRSI5, rsi20: currRSI20 }; 
+      return { symbol, price: currClose, ma3DistPercent, priceChange24h, rsi5: currRSI5, rsi20: currRSI20, isBullTrend }; 
     } catch {
       return null;
     }
@@ -457,7 +459,8 @@ canvas { display: block; width: 100%; height: 100%; }
       dom.progress.style.width = `${(completed / candidateSymbols.length) * 100}%`; 
     });
 
-    rawResults.sort((a, b) => a.ma3DistPercent - b.ma3DistPercent); 
+    // 🎯 已更新：依距離 60MA 距離 (由大到小 / 降序) 排序
+    rawResults.sort((a, b) => b.ma3DistPercent - a.ma3DistPercent); 
 
     dom.statEntry.innerText = rawResults.length; 
     dom.scanBtn.disabled = false; 
@@ -489,6 +492,7 @@ canvas { display: block; width: 100%; height: 100%; }
           <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"> 
             <span class="badge-rank">#${index + 1}</span> 
             <span class="symbol-name">${item.symbol.replace('USDT','')}</span> 
+            <span class="badge-bull-trend">🔥 符合1h多頭列</span>
             <span class="badge-bull">🎯 拉回紅棒</span> 
             <span class="badge-rsi">RSI: ${item.rsi5.toFixed(1)} / ${item.rsi20.toFixed(1)}</span>
           </div> 
@@ -549,17 +553,14 @@ canvas { display: block; width: 100%; height: 100%; }
       const closes = klines.map(k => parseFloat(k[4]));
       const volumes = klines.map(k => parseFloat(k[5]));
 
-      // 價格均線
       const ma5 = calculateSMA(closes, P0);
       const ma30 = calculateSMA(closes, P1);
       const ma45 = calculateSMA(closes, P2);
       const ma60 = calculateSMA(closes, P3);
 
-      // 成交量均線 (5VM & 20VM)
       const vm5 = calculateSMA(volumes, 5);
       const vm20 = calculateSMA(volumes, 20);
 
-      // RSI 指標
       const rsi5 = calculateRSI(closes, 5);
       const rsi20 = calculateRSI(closes, 20);
 
@@ -601,7 +602,6 @@ canvas { display: block; width: 100%; height: 100%; }
       const padding = { top: 15, bottom: 15, left: 10, right: 60 };
       const totalH = height - padding.top - padding.bottom;
       
-      // 畫面分配：主圖 (K線) 45%, 成交量 22%, RSI 指標區 25%
       const priceH = totalH * 0.45;
       const volH = totalH * 0.22;
       const rsiH = totalH * 0.25;
@@ -639,7 +639,6 @@ canvas { display: block; width: 100%; height: 100%; }
       ctx.textAlign = 'left';
       ctx.lineWidth = 1;
 
-      // 1. K線圖網格與價格刻度
       const gridLines = 3;
       for (let i = 0; i <= gridLines; i++) {
         const y = padding.top + (priceH / gridLines) * i;
@@ -651,7 +650,6 @@ canvas { display: block; width: 100%; height: 100%; }
         ctx.fillText(pVal.toFixed(2), width - padding.right + 6, y + 3);
       }
 
-      // 2. 成交量底線與刻度
       ctx.beginPath();
       ctx.moveTo(padding.left, volTop);
       ctx.lineTo(width - padding.right, volTop);
@@ -659,7 +657,6 @@ canvas { display: block; width: 100%; height: 100%; }
       const formatVol = (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : (v / 1e3).toFixed(0) + 'K';
       ctx.fillText(formatVol(maxVol), width - padding.right + 6, volTop + 10);
 
-      // 3. RSI 區域背景與 50 中軸虛線
       ctx.beginPath();
       ctx.moveTo(padding.left, rsiTop);
       ctx.lineTo(width - padding.right, rsiTop);
@@ -677,7 +674,6 @@ canvas { display: block; width: 100%; height: 100%; }
 
       ctx.fillText('RSI 50', width - padding.right + 6, yRSI50 + 3);
 
-      // 繪製 K 棒與成交量柱狀圖
       showK.forEach((k, i) => {
         const open = parseFloat(k[1]), high = parseFloat(k[2]), low = parseFloat(k[3]), close = parseFloat(k[4]), vol = parseFloat(k[5]);
         const x = padding.left + i * barWidth + barWidth / 2;
@@ -705,7 +701,6 @@ canvas { display: block; width: 100%; height: 100%; }
         ctx.fillRect(x - bw / 2, vY, bw, volTop + volH - vY);
       });
 
-      // 通用折線繪製函數
       const drawLine = (dataArray, color, getYFunc, lineWidth = 1.5) => {
         ctx.strokeStyle = color;
         ctx.lineWidth = lineWidth;
@@ -721,17 +716,14 @@ canvas { display: block; width: 100%; height: 100%; }
         ctx.stroke();
       };
 
-      // 繪製價格均線
       drawLine(showMA5, '#00ff66', getYPrice);
       drawLine(showMA30, '#ffea00', getYPrice);
       drawLine(showMA45, '#ff9100', getYPrice);
       drawLine(showMA60, '#ff007f', getYPrice);
 
-      // 繪製成交量均線 (5VM 淡天藍 / 20VM 淡紫色)
       drawLine(showVM5, '#88edf6', getYVol, 1.2);
       drawLine(showVM20, '#d8b4fe', getYVol, 1.2);
 
-      // 繪製 5RSI 與 20RSI 折線
       drawLine(showRSI5, '#ffea00', getYRSI, 1.5);
       drawLine(showRSI20, '#9d4edd', getYRSI, 1.5);
 
