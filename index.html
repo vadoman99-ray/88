@@ -139,8 +139,9 @@ canvas { display: block; width: 100%; height: 100%; }
 
 .swipe-hint {
   position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
-  font-size: 0.65rem; color: rgba(255, 255, 255, 0.35); pointer-events: none;
-  font-family: 'Noto Sans TC', sans-serif; z-index: 10;
+  font-size: 0.65rem; color: rgba(255, 255, 255, 0.45); pointer-events: none;
+  font-family: 'Noto Sans TC', sans-serif; z-index: 10; text-align: center;
+  background: rgba(6, 9, 17, 0.7); padding: 2px 8px; border-radius: 12px;
 }
 
 @media (max-width: 600px) {
@@ -211,7 +212,7 @@ canvas { display: block; width: 100%; height: 100%; }
     <div class="chart-container" id="canvasWrapper">
       <canvas id="klineCanvas"></canvas>
     </div>
-    <div class="swipe-hint">◀ 左右滑動或用方向鍵切換標的 ▶</div>
+    <div class="swipe-hint">◀ 左右滑動 / 方向鍵切換標的 (Esc 關閉) ▶</div>
   </div>
 </div>
 
@@ -229,6 +230,7 @@ canvas { display: block; width: 100%; height: 100%; }
   let countdownSec = 60;
   let timerInterval = null;
   let currentIndex = -1;
+  let switchDebounceTimer = null;
 
   const dom = {
     scanBtn: document.getElementById('scanBtn'),
@@ -312,7 +314,6 @@ canvas { display: block; width: 100%; height: 100%; }
     return ma; 
   } 
 
-  // 標準 RSI (Wilder's Smoothing) 計算函數
   function calculateRSI(closes, period) {
     if (closes.length <= period) return new Array(closes.length).fill(null);
     const rsi = new Array(closes.length).fill(null);
@@ -352,7 +353,6 @@ canvas { display: block; width: 100%; height: 100%; }
 
   async function fetchSymbolDetailsData(symbol, signal) { 
     try {
-      // 確保獲取足夠多的 K 棒以完成 20RSI 與 60MA 計算
       const fetchLimit = Math.max(P3 + 1, 100);
       const res = await fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${fetchLimit}`, { signal }); 
       if (!res.ok) return null; 
@@ -368,7 +368,6 @@ canvas { display: block; width: 100%; height: 100%; }
       const currOpen = opens[totalLen - 1];
       const currLow = lows[totalLen - 1];
 
-      // 1. 計算均線
       const ma5Arr = calculateSMA(closes, P0);
       const ma30Arr = calculateSMA(closes, P1);
       const ma45Arr = calculateSMA(closes, P2);
@@ -379,16 +378,10 @@ canvas { display: block; width: 100%; height: 100%; }
       const ma2 = ma45Arr[totalLen - 1]; 
       const ma3 = ma60Arr[totalLen - 1]; 
 
-      // 條條件 1：1H 多頭排列 (5MA > 30MA > 45MA > 60MA 且 價格 > 60MA)
       if (!(ma5 > ma1 && ma1 > ma2 && ma2 > ma3 && currClose >= ma3)) return null; 
-
-      // 條件 2：K 棒拉回至 5MA 下（當前 K 棒的最低價或收盤價下穿 5MA）
       if (!(currLow < ma5 || currClose < ma5)) return null;
-
-      // 條件 3：紅棒形成 (收盤價 > 開盤價，代表轉折買盤進入)
       if (currClose <= currOpen) return null;
 
-      // 條件 4：RSI 指標判定 (5RSI < 50 且 20RSI > 50)
       const rsi5Arr = calculateRSI(closes, 5);
       const rsi20Arr = calculateRSI(closes, 20);
 
@@ -535,9 +528,24 @@ canvas { display: block; width: 100%; height: 100%; }
 
   let activeChartController = null;
 
+  function renderLoadingState() {
+    const rect = dom.canvasWrapper.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    dom.canvas.width = rect.width * dpr;
+    dom.canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.fillStyle = '#64748b';
+    ctx.font = '14px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText('載入數據中...', rect.width / 2, rect.height / 2);
+  }
+
   async function drawKlineChart(symbol) {
     if (activeChartController) activeChartController.abort();
     activeChartController = new AbortController();
+
+    renderLoadingState();
 
     try {
       const res = await fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${KLINE_SHOW_COUNT + P3}`, { signal: activeChartController.signal });
@@ -713,22 +721,31 @@ canvas { display: block; width: 100%; height: 100%; }
 
   function closeChartModal() {
     if (activeChartController) activeChartController.abort();
+    if (switchDebounceTimer) clearTimeout(switchDebounceTimer);
     dom.chartModal.classList.remove('active');
     dom.chartModal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('modal-open');
     currentIndex = -1;
   }
 
+  function navigateSymbol(targetIndex) {
+    if (targetIndex < 0 || targetIndex >= rawResults.length || targetIndex === currentIndex) return;
+    currentIndex = targetIndex;
+    const item = rawResults[currentIndex];
+    dom.symbolTitle.innerText = `#${currentIndex + 1} ${item.symbol}`;
+
+    if (switchDebounceTimer) clearTimeout(switchDebounceTimer);
+    switchDebounceTimer = setTimeout(() => {
+      drawKlineChart(item.symbol);
+    }, 150);
+  }
+
   function nextSymbol() {
-    if (currentIndex >= 0 && currentIndex < rawResults.length - 1) {
-      openChartModal(currentIndex + 1);
-    }
+    navigateSymbol(currentIndex + 1);
   }
 
   function prevSymbol() {
-    if (currentIndex > 0) {
-      openChartModal(currentIndex - 1);
-    }
+    navigateSymbol(currentIndex - 1);
   }
 
   let touchStartX = 0;
@@ -767,8 +784,10 @@ canvas { display: block; width: 100%; height: 100%; }
     if (e.key === 'Escape') {
       closeChartModal();
     } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
       nextSymbol();
     } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
       prevSymbol();
     }
   });
