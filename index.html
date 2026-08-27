@@ -52,7 +52,6 @@ body.modal-open { overflow: hidden; position: fixed; width: 100%; height: 100%; 
 .progress-container { height: 3px; background: rgba(255, 255, 255, 0.05); width: 100%; } 
 .progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--manga-pink), var(--manga-cyan)); transition: width 0.1s linear; } 
 
-/* 4頁籤切換網格 */
 .tab-container {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 0 16px; margin-top: 12px;
 }
@@ -92,7 +91,6 @@ body.modal-open { overflow: hidden; position: fixed; width: 100%; height: 100%; 
 .val-up { color: var(--manga-green); } 
 .val-down { color: var(--manga-red); } 
 
-/* Modal 區塊 - 上中下三圖表排版 (15M / 1H / 4H) */
 .chart-modal {
   position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100dvh;
   background: rgba(4, 6, 14, 0.95); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -138,7 +136,6 @@ body.modal-open { overflow: hidden; position: fixed; width: 100%; height: 100%; 
 .nav-btn.prev { left: 8px; }
 .nav-btn.next { right: 8px; }
 
-/* 3 Canvas 垂直容器 */
 .charts-wrapper { flex: 1; width: 100%; height: 100%; display: flex; flex-direction: column; background: #060911; overflow: hidden; }
 .chart-panel { flex: 1; width: 100%; height: 33.33%; position: relative; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
 .chart-panel:last-child { border-bottom: none; }
@@ -171,7 +168,6 @@ canvas { display: block; width: 100%; height: 100%; }
 </div> 
 <div class="progress-container"><div id="progress" class="progress-fill"></div></div> 
 
-<!-- 4個獨立頁籤 -->
 <div class="tab-container">
   <button id="tab15m" class="tab-btn active">⚡ 15M 多頭 (<span id="count15m">0</span>)</button>
   <button id="tab1h" class="tab-btn">⚡ 1H 多頭 (<span id="count1h">0</span>)</button>
@@ -215,15 +211,15 @@ canvas { display: block; width: 100%; height: 100%; }
 
     <div class="charts-wrapper">
       <div class="chart-panel" id="wrapper15m">
-        <span class="panel-tag">15M 時間框架</span>
+        <span class="panel-tag">15M 時間框架 (80根)</span>
         <canvas id="klineCanvas15m"></canvas>
       </div>
       <div class="chart-panel" id="wrapper1h">
-        <span class="panel-tag">1H 時間框架</span>
+        <span class="panel-tag">1H 時間框架 (70根)</span>
         <canvas id="klineCanvas1h"></canvas>
       </div>
       <div class="chart-panel" id="wrapper4h">
-        <span class="panel-tag">4H 時間框架</span>
+        <span class="panel-tag">4H 時間框架 (60根)</span>
         <canvas id="klineCanvas4h"></canvas>
       </div>
     </div>
@@ -235,14 +231,19 @@ canvas { display: block; width: 100%; height: 100%; }
   const API_BASE = 'https://fapi.binance.com'; 
   const P0 = 5, P1 = 30, P2 = 45, P3 = 60; 
   const MIN_VOLUME = 100000000;
-  const KLINE_SHOW_COUNT = 100;
-  const CONCURRENCY_LIMIT = 10;
+  
+  // 各週期抓取的 K 線數量直接對應需求
+  const LIMIT_15M = 80;
+  const LIMIT_1H = 70;
+  const LIMIT_4H = 60;
+
+  const CONCURRENCY_LIMIT = 20; // 提高並發數以極大化下載速度
 
   let results15M = [];
   let results1H = []; 
   let results4H = []; 
   let resultsMulti = []; 
-  let activeTab = '15m'; // '15m' | '1h' | '4h' | 'multi'
+  let activeTab = '15m';
 
   let tickerMap = new Map(); 
   let currentIndex = -1; 
@@ -313,10 +314,11 @@ canvas { display: block; width: 100%; height: 100%; }
 
   async function fetchSymbolDetailsData(symbol, signal) { 
     try {
+      // 依各週期精準拉取對應根數，減少網路傳輸量與運算負擔
       const [res15m, res1h, res4h] = await Promise.all([
-        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=${P3 + 1}`, { signal }),
-        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${P3 + 1}`, { signal }),
-        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=${P3 + 1}`, { signal })
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=${LIMIT_15M}`, { signal }),
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${LIMIT_1H}`, { signal }),
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=${LIMIT_4H}`, { signal })
       ]);
 
       if (!res15m.ok || !res1h.ok || !res4h.ok) return null;
@@ -329,7 +331,6 @@ canvas { display: block; width: 100%; height: 100%; }
       const bull1h = isBullishAlignment(klines1h);
       const bull4h = isBullishAlignment(klines4h);
 
-      // 任一週期都不滿足時直接過濾
       if (!bull15m && !bull1h && !bull4h) return null;
 
       let matchCount = 0;
@@ -400,13 +401,11 @@ canvas { display: block; width: 100%; height: 100%; }
       dom.progress.style.width = `${(completed / candidateSymbols.length) * 100}%`; 
     });
 
-    // 歸類至 4 個獨立清單
     results15M = allMatches.filter(m => m.bull15m);
     results1H = allMatches.filter(m => m.bull1h);
     results4H = allMatches.filter(m => m.bull4h);
     resultsMulti = allMatches.filter(m => m.matchCount >= 2);
 
-    // 排序
     results15M.sort((a, b) => a.bull15m.ma3DistPercent - b.bull15m.ma3DistPercent);
     results1H.sort((a, b) => a.bull1h.ma3DistPercent - b.bull1h.ma3DistPercent);
     results4H.sort((a, b) => a.bull4h.ma3DistPercent - b.bull4h.ma3DistPercent);
@@ -495,8 +494,10 @@ canvas { display: block; width: 100%; height: 100%; }
   let activeChartController = null;
 
   function renderCanvasChart(canvas, wrapper, ctx, klines) {
-    const closes = klines.map(k => parseFloat(k[4]));
-    const volumes = klines.map(k => parseFloat(k[5]));
+    const showK = klines;
+    const showLen = showK.length;
+    const closes = showK.map(k => parseFloat(k[4]));
+    const volumes = showK.map(k => parseFloat(k[5]));
 
     const ma5 = calculateSMA(closes, P0);
     const ma30 = calculateSMA(closes, P1);
@@ -505,14 +506,6 @@ canvas { display: block; width: 100%; height: 100%; }
 
     const vm5 = calculateSMA(volumes, 5);
     const vm20 = calculateSMA(volumes, 20);
-
-    const showK = klines.slice(-KLINE_SHOW_COUNT);
-    const showMA5 = ma5.slice(-KLINE_SHOW_COUNT);
-    const showMA30 = ma30.slice(-KLINE_SHOW_COUNT);
-    const showMA45 = ma45.slice(-KLINE_SHOW_COUNT);
-    const showMA60 = ma60.slice(-KLINE_SHOW_COUNT);
-    const showVM5 = vm5.slice(-KLINE_SHOW_COUNT);
-    const showVM20 = vm20.slice(-KLINE_SHOW_COUNT);
 
     const rect = wrapper.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -523,7 +516,7 @@ canvas { display: block; width: 100%; height: 100%; }
     const width = rect.width;
     const height = rect.height;
 
-    const padding = { top: 18, bottom: 8, left: 10, right: 55 };
+    const padding = { top: 18, bottom: 8, left: 10, right: 65 };
     const totalH = height - padding.top - padding.bottom;
     
     const priceH = totalH * 0.62;
@@ -548,7 +541,7 @@ canvas { display: block; width: 100%; height: 100%; }
     const priceRange = maxP - minP || 1;
     const getYPrice = (p) => padding.top + priceH - ((p - minP) / priceRange) * priceH;
     const getYVol = (v) => volTop + volH - (v / (maxVol || 1)) * volH;
-    const barWidth = chartW / KLINE_SHOW_COUNT;
+    const barWidth = chartW / showLen;
 
     ctx.clearRect(0, 0, width, height);
 
@@ -619,13 +612,13 @@ canvas { display: block; width: 100%; height: 100%; }
       ctx.stroke();
     };
 
-    drawLine(showMA5, '#00ff66', getYPrice);
-    drawLine(showMA30, '#ffea00', getYPrice);
-    drawLine(showMA45, '#ff9100', getYPrice);
-    drawLine(showMA60, '#ff007f', getYPrice);
+    drawLine(ma5, '#00ff66', getYPrice);
+    drawLine(ma30, '#ffea00', getYPrice);
+    drawLine(ma45, '#ff9100', getYPrice);
+    drawLine(ma60, '#ff007f', getYPrice);
 
-    drawLine(showVM5, '#00f0ff', getYVol, 1.0);
-    drawLine(showVM20, '#9d4edd', getYVol, 1.0);
+    drawLine(vm5, '#00f0ff', getYVol, 1.0);
+    drawLine(vm20, '#9d4edd', getYVol, 1.0);
   }
 
   async function loadAndDrawCharts(symbol) {
@@ -634,9 +627,9 @@ canvas { display: block; width: 100%; height: 100%; }
 
     try {
       const [res15m, res1h, res4h] = await Promise.all([
-        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=${KLINE_SHOW_COUNT + P3}`, { signal: activeChartController.signal }),
-        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${KLINE_SHOW_COUNT + P3}`, { signal: activeChartController.signal }),
-        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=${KLINE_SHOW_COUNT + P3}`, { signal: activeChartController.signal })
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=${LIMIT_15M}`, { signal: activeChartController.signal }),
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${LIMIT_1H}`, { signal: activeChartController.signal }),
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=${LIMIT_4H}`, { signal: activeChartController.signal })
       ]);
 
       if (!res15m.ok || !res1h.ok || !res4h.ok) return;
@@ -686,7 +679,6 @@ canvas { display: block; width: 100%; height: 100%; }
     openChartModal(newIndex);
   }
 
-  // 手勢滑動處理
   let touchStartX = 0, touchStartY = 0;
   let touchEndX = 0, touchEndY = 0;
 
@@ -711,7 +703,6 @@ canvas { display: block; width: 100%; height: 100%; }
     }
   }
 
-  // 頁籤切換事件綁定
   function switchTab(tabKey, targetBtn) {
     activeTab = tabKey;
     [dom.tab15m, dom.tab1h, dom.tab4h, dom.tabMulti].forEach(b => b.classList.remove('active'));
@@ -724,7 +715,6 @@ canvas { display: block; width: 100%; height: 100%; }
   dom.tab4h.addEventListener('click', () => switchTab('4h', dom.tab4h));
   dom.tabMulti.addEventListener('click', () => switchTab('multi', dom.tabMulti));
 
-  // 事件監聽
   dom.scanBtn.addEventListener('click', startScan);
   dom.closeModalBtn.addEventListener('click', closeChartModal);
   dom.prevBtn.addEventListener('click', (e) => { e.stopPropagation(); navigateSymbol(-1); });
@@ -741,12 +731,20 @@ canvas { display: block; width: 100%; height: 100%; }
     else if (e.key === 'ArrowRight') navigateSymbol(1);
   });
 
+  let resizeTimer = null;
   window.addEventListener('resize', () => {
-    const currentList = getCurrentList();
-    if (dom.chartModal.classList.contains('active') && currentIndex !== -1 && currentList[currentIndex]) {
-      loadAndDrawCharts(currentList[currentIndex].symbol);
-    }
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const currentList = getCurrentList();
+      if (dom.chartModal.classList.contains('active') && currentIndex !== -1 && currentList[currentIndex]) {
+        loadAndDropChartsIfNeeded(currentList[currentIndex].symbol);
+      }
+    }, 150);
   });
+
+  function loadAndDropChartsIfNeeded(symbol) {
+    loadAndDrawCharts(symbol);
+  }
 })();
 </script> 
 </body> 
