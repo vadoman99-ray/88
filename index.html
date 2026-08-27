@@ -55,7 +55,8 @@ body.modal-open { overflow: hidden; position: fixed; width: 100%; height: 100%; 
   color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; flex: 1;
 }
 
-.auto-scan-box { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700; color: var(--manga-cyan); }
+.auto-scan-box { display: flex; align-items: center; gap: 12px; font-size: 0.8rem; font-weight: 700; color: var(--manga-cyan); flex-wrap: wrap; }
+.filter-label { color: var(--manga-yellow); cursor: pointer; display: flex; align-items: center; gap: 4px; }
 .timer-text { font-family: 'JetBrains Mono', monospace; color: var(--manga-yellow); }
 
 .scan-btn { 
@@ -169,6 +170,8 @@ canvas { display: block; width: 100%; height: 100%; }
       <input type="text" id="tgChatId" placeholder="TG Chat ID" onchange="saveConfig()">
     </div>
     <div class="auto-scan-box">
+      <!-- 🎯 新增勾選框：僅顯示 1H 多頭排列 -->
+      <label class="filter-label"><input type="checkbox" id="onlyBullishToggle" checked onchange="onFilterChange()"> 僅顯示 1H 多頭排列</label>
       <label><input type="checkbox" id="autoScanToggle" checked onchange="toggleAutoScan()"> 每 60s 自動更新</label>
       <span class="timer-text" id="timerCount">(60s)</span>
     </div>
@@ -226,6 +229,7 @@ canvas { display: block; width: 100%; height: 100%; }
   const CONCURRENCY_LIMIT = 12;
 
   let rawResults = []; 
+  let filteredResults = [];
   let tickerMap = new Map(); 
   let isScanning = false;
   let countdownSec = 60;
@@ -247,6 +251,7 @@ canvas { display: block; width: 100%; height: 100%; }
     canvas: document.getElementById('klineCanvas'),
     tgToken: document.getElementById('tgToken'),
     tgChatId: document.getElementById('tgChatId'),
+    onlyBullishToggle: document.getElementById('onlyBullishToggle'),
     autoScanToggle: document.getElementById('autoScanToggle'),
     timerCount: document.getElementById('timerCount')
   };
@@ -262,6 +267,10 @@ canvas { display: block; width: 100%; height: 100%; }
     dom.tgToken.value = localStorage.getItem('TG_BOT_TOKEN') || '';
     dom.tgChatId.value = localStorage.getItem('TG_CHAT_ID') || '';
   }
+
+  window.onFilterChange = () => {
+    renderList();
+  };
 
   async function sendTelegramNotification(results) {
     const token = dom.tgToken.value.trim();
@@ -380,9 +389,9 @@ canvas { display: block; width: 100%; height: 100%; }
       const currMA60 = ma60Arr[totalLen - 1]; 
       const prevMA5 = ma5Arr[totalLen - 2];
 
+      // 多頭排列條件
       const isBullTrend = (currMA5 > currMA30 && currMA30 > currMA45 && currMA45 > currMA60 && currClose >= currMA60);
-      if (!isBullTrend) return null; 
-
+      
       const isPullback = (prevLow < prevMA5 || prevClose < prevMA5 || lows[totalLen - 1] < currMA5);
       if (!isPullback) return null;
 
@@ -459,27 +468,32 @@ canvas { display: block; width: 100%; height: 100%; }
       dom.progress.style.width = `${(completed / candidateSymbols.length) * 100}%`; 
     });
 
-    // 🎯 已更新：依距離 60MA 距離 (由大到小 / 降序) 排序
+    // 依距離 60MA 距離 (由大到小 / 降序) 排序
     rawResults.sort((a, b) => b.ma3DistPercent - a.ma3DistPercent); 
 
-    dom.statEntry.innerText = rawResults.length; 
     dom.scanBtn.disabled = false; 
     dom.scanBtn.innerText = "啟動極速掃描"; 
     renderList(); 
 
-    sendTelegramNotification(rawResults);
+    sendTelegramNotification(filteredResults);
 
     isScanning = false;
     resetCountdown();
   } 
 
   function renderList() { 
-    if (rawResults.length === 0) { 
-      dom.symbolList.innerHTML = `<div style="text-align:center; padding:40px; color:#64748b; font-weight:800;">目前無符合「多頭拉回反彈」之標的</div>`; 
+    const onlyBullish = dom.onlyBullishToggle.checked;
+    
+    // 依據勾選狀態進行篩選
+    filteredResults = rawResults.filter(item => !onlyBullish || item.isBullTrend);
+    dom.statEntry.innerText = filteredResults.length; 
+
+    if (filteredResults.length === 0) { 
+      dom.symbolList.innerHTML = `<div style="text-align:center; padding:40px; color:#64748b; font-weight:800;">目前無符合條件之標的</div>`; 
       return; 
     } 
     const fragment = document.createDocumentFragment(); 
-    rawResults.forEach((item, index) => { 
+    filteredResults.forEach((item, index) => { 
       const card = document.createElement('div'); 
       card.className = 'symbol-card'; 
       card.addEventListener('click', () => openChartModal(index)); 
@@ -492,7 +506,7 @@ canvas { display: block; width: 100%; height: 100%; }
           <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"> 
             <span class="badge-rank">#${index + 1}</span> 
             <span class="symbol-name">${item.symbol.replace('USDT','')}</span> 
-            <span class="badge-bull-trend">🔥 符合1h多頭列</span>
+            ${item.isBullTrend ? '<span class="badge-bull-trend">🔥 符合1h多頭列</span>' : ''}
             <span class="badge-bull">🎯 拉回紅棒</span> 
             <span class="badge-rsi">RSI: ${item.rsi5.toFixed(1)} / ${item.rsi20.toFixed(1)}</span>
           </div> 
@@ -733,9 +747,9 @@ canvas { display: block; width: 100%; height: 100%; }
   }
 
   function openChartModal(index) {
-    if (index < 0 || index >= rawResults.length) return;
+    if (index < 0 || index >= filteredResults.length) return;
     currentIndex = index;
-    const item = rawResults[currentIndex];
+    const item = filteredResults[currentIndex];
     
     dom.symbolTitle.innerText = `#${currentIndex + 1} ${item.symbol}`;
     dom.chartModal.classList.add('active');
@@ -754,7 +768,7 @@ canvas { display: block; width: 100%; height: 100%; }
   }
 
   function nextSymbol() {
-    if (currentIndex >= 0 && currentIndex < rawResults.length - 1) {
+    if (currentIndex >= 0 && currentIndex < filteredResults.length - 1) {
       openChartModal(currentIndex + 1);
     }
   }
@@ -809,7 +823,7 @@ canvas { display: block; width: 100%; height: 100%; }
 
   window.addEventListener('resize', () => {
     if (dom.chartModal.classList.contains('active') && currentIndex >= 0) {
-      drawKlineChart(rawResults[currentIndex].symbol);
+      drawKlineChart(filteredResults[currentIndex].symbol);
     }
   });
 
