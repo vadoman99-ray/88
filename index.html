@@ -3,7 +3,7 @@
 <head> 
 <meta charset="UTF-8"> 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"> 
-<title>⚡ 1H MA 多頭排列全排行 (>1億USDT)</title> 
+<title>⚡ 多週期多頭排列選股儀表板 (>1億USDT)</title> 
 <style> 
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;800&family=Noto+Sans+TC:wght@700;900&family=JetBrains+Mono:wght@700;800;900&display=swap'); 
 :root { 
@@ -51,7 +51,23 @@ body.modal-open { overflow: hidden; position: fixed; width: 100%; height: 100%; 
 .scan-btn:disabled { opacity: 0.5; filter: grayscale(1); cursor: not-allowed; } 
 .progress-container { height: 3px; background: rgba(255, 255, 255, 0.05); width: 100%; } 
 .progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--manga-pink), var(--manga-cyan)); transition: width 0.1s linear; } 
-.dashboard { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 16px; } 
+
+/* 4頁籤切換網格 */
+.tab-container {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 0 16px; margin-top: 12px;
+}
+.tab-btn {
+  padding: 8px 4px; border-radius: 8px; font-weight: 800; font-size: 0.75rem;
+  background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8; cursor: pointer; text-align: center; transition: all 0.2s ease;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tab-btn.active {
+  background: rgba(0, 240, 255, 0.15); border-color: var(--manga-cyan);
+  color: #fff; box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+}
+
+.dashboard { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 12px 16px; } 
 .stat-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 14px; padding: 12px; text-align: center; backdrop-filter: blur(10px); } 
 .stat-card .val { font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; font-weight: 800; } 
 .stat-card.entry { border-color: rgba(255, 0, 127, 0.4); } 
@@ -72,19 +88,20 @@ body.modal-open { overflow: hidden; position: fixed; width: 100%; height: 100%; 
 
 .badge-rank { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; background: rgba(255, 255, 255, 0.1); color: #fff; } 
 .badge-bull { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; background: rgba(0, 255, 102, 0.15); color: var(--manga-green); border: 1px solid var(--manga-green); }
+.badge-multi { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; background: rgba(255, 0, 127, 0.15); color: var(--manga-pink); border: 1px solid var(--manga-pink); }
 .val-up { color: var(--manga-green); } 
 .val-down { color: var(--manga-red); } 
 
-/* Modal 區塊 - 上下雙圖表排版 */
+/* Modal 區塊 - 上中下三圖表排版 (15M / 1H / 4H) */
 .chart-modal {
   position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100dvh;
   background: rgba(4, 6, 14, 0.95); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  z-index: 1000; display: none; justify-content: center; align-items: center; padding: 12px;
+  z-index: 1000; display: none; justify-content: center; align-items: center; padding: 8px;
   overflow: hidden; touch-action: pan-y;
 }
 .chart-modal.active { display: flex; }
 .chart-box {
-  width: 100%; max-width: 1050px; height: 100%; max-height: 95vh; max-height: 95dvh; background: #0b0f19;
+  width: 100%; max-width: 1050px; height: 100%; max-height: 98vh; max-height: 98dvh; background: #0b0f19;
   border: 1px solid rgba(0, 240, 255, 0.35); border-radius: 16px; overflow: hidden;
   display: flex; flex-direction: column; box-shadow: 0 0 50px rgba(0, 240, 255, 0.2);
   position: relative; transition: transform 0.15s ease-out;
@@ -99,13 +116,6 @@ body.modal-open { overflow: hidden; position: fixed; width: 100%; height: 100%; 
 .symbol-title { font-family: 'JetBrains Mono', monospace; font-size: 1rem; font-weight: 800; color: #fff; }
 .symbol-rank-tag { font-size: 0.7rem; color: var(--manga-cyan); font-weight: 800; }
 
-.ma5-status-badge {
-  font-family: 'JetBrains Mono', 'Noto Sans TC', sans-serif;
-  font-size: 0.7rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center;
-}
-.ma5-status-badge.above { background: rgba(0, 255, 102, 0.15); color: var(--manga-green); border: 1px solid var(--manga-green); }
-.ma5-status-badge.below { background: rgba(255, 42, 109, 0.15); color: var(--manga-red); border: 1px solid var(--manga-red); }
-
 .legend-bar { display: flex; gap: 6px; font-size: 0.65rem; font-family: 'JetBrains Mono', monospace; flex-wrap: wrap; }
 .legend-item { display: flex; align-items: center; gap: 3px; }
 .legend-color { width: 6px; height: 6px; border-radius: 2px; }
@@ -117,7 +127,6 @@ body.modal-open { overflow: hidden; position: fixed; width: 100%; height: 100%; 
 }
 .close-btn:hover { background: var(--manga-red); color: #fff; border-color: var(--manga-red); }
 
-/* 切換按鈕 (Nav Arrows) */
 .nav-btn {
   position: absolute; top: 50%; transform: translateY(-50%);
   background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(0, 240, 255, 0.3); color: var(--manga-cyan);
@@ -129,9 +138,9 @@ body.modal-open { overflow: hidden; position: fixed; width: 100%; height: 100%; 
 .nav-btn.prev { left: 8px; }
 .nav-btn.next { right: 8px; }
 
-/* 雙 Canvas 容器結構 */
+/* 3 Canvas 垂直容器 */
 .charts-wrapper { flex: 1; width: 100%; height: 100%; display: flex; flex-direction: column; background: #060911; overflow: hidden; }
-.chart-panel { flex: 1; width: 100%; height: 50%; position: relative; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.chart-panel { flex: 1; width: 100%; height: 33.33%; position: relative; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
 .chart-panel:last-child { border-bottom: none; }
 .panel-tag {
   position: absolute; top: 4px; left: 8px; z-index: 5;
@@ -145,9 +154,10 @@ canvas { display: block; width: 100%; height: 100%; }
   .chart-modal { padding: 0; }
   .chart-box { max-height: 100vh; max-height: 100dvh; border-radius: 0; border: none; }
   .chart-header { padding: 6px 10px; }
-  .symbol-title { font-size: 0.9rem; }
+  .symbol-title { font-size: 0.85rem; }
   .legend-bar { font-size: 0.6rem; gap: 4px; }
   .nav-btn { width: 32px; height: 32px; font-size: 1rem; opacity: 0.6; }
+  .tab-btn { font-size: 0.65rem; padding: 6px 2px; }
 }
 </style> 
 </head> 
@@ -155,11 +165,19 @@ canvas { display: block; width: 100%; height: 100%; }
 
 <div class="app-header"> 
   <div class="header-top"> 
-    <div class="header-title">⚡ 1H MA 多頭排列全排行 (>1億USDT)</div> 
+    <div class="header-title">⚡ 多週期多頭排列儀表板 (>1億USDT)</div> 
     <button id="scanBtn" class="scan-btn">啟動極速掃描</button> 
   </div> 
 </div> 
 <div class="progress-container"><div id="progress" class="progress-fill"></div></div> 
+
+<!-- 4個獨立頁籤 -->
+<div class="tab-container">
+  <button id="tab15m" class="tab-btn active">⚡ 15M 多頭 (<span id="count15m">0</span>)</button>
+  <button id="tab1h" class="tab-btn">⚡ 1H 多頭 (<span id="count1h">0</span>)</button>
+  <button id="tab4h" class="tab-btn">⚡ 4H 多頭 (<span id="count4h">0</span>)</button>
+  <button id="tabMulti" class="tab-btn">🔥 共振(≥2) (<span id="countMulti">0</span>)</button>
+</div>
 
 <div class="dashboard"> 
   <div class="stat-card"> 
@@ -168,7 +186,7 @@ canvas { display: block; width: 100%; height: 100%; }
   </div> 
   <div class="stat-card entry"> 
     <div class="val" id="statEntry">0</div> 
-    <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">符合 1H 多頭排列標的</div> 
+    <div style="font-size:0.75rem; color:#64748b; margin-top:2px;" id="statLabel">當前清單符合數</div> 
   </div> 
 </div> 
 
@@ -183,7 +201,6 @@ canvas { display: block; width: 100%; height: 100%; }
       <div class="header-title-group">
         <span id="symbolRankTag" class="symbol-rank-tag">#1</span>
         <div id="symbolTitle" class="symbol-title">BTCUSDT</div>
-        <span id="ma5Badge" class="ma5-status-badge above">1H 5MA 之上</span>
       </div>
       <div class="legend-bar">
         <div class="legend-item"><div class="legend-color" style="background:#00ff66"></div>5MA</div>
@@ -197,6 +214,10 @@ canvas { display: block; width: 100%; height: 100%; }
     </div>
 
     <div class="charts-wrapper">
+      <div class="chart-panel" id="wrapper15m">
+        <span class="panel-tag">15M 時間框架</span>
+        <canvas id="klineCanvas15m"></canvas>
+      </div>
       <div class="chart-panel" id="wrapper1h">
         <span class="panel-tag">1H 時間框架</span>
         <canvas id="klineCanvas1h"></canvas>
@@ -215,9 +236,14 @@ canvas { display: block; width: 100%; height: 100%; }
   const P0 = 5, P1 = 30, P2 = 45, P3 = 60; 
   const MIN_VOLUME = 100000000;
   const KLINE_SHOW_COUNT = 100;
-  const CONCURRENCY_LIMIT = 12;
+  const CONCURRENCY_LIMIT = 10;
 
-  let rawResults = []; 
+  let results15M = [];
+  let results1H = []; 
+  let results4H = []; 
+  let resultsMulti = []; 
+  let activeTab = '15m'; // '15m' | '1h' | '4h' | 'multi'
+
   let tickerMap = new Map(); 
   let currentIndex = -1; 
 
@@ -226,21 +252,30 @@ canvas { display: block; width: 100%; height: 100%; }
     progress: document.getElementById('progress'),
     statTotal: document.getElementById('statTotal'),
     statEntry: document.getElementById('statEntry'),
+    count15m: document.getElementById('count15m'),
+    count1h: document.getElementById('count1h'),
+    count4h: document.getElementById('count4h'),
+    countMulti: document.getElementById('countMulti'),
+    tab15m: document.getElementById('tab15m'),
+    tab1h: document.getElementById('tab1h'),
+    tab4h: document.getElementById('tab4h'),
+    tabMulti: document.getElementById('tabMulti'),
     symbolList: document.getElementById('symbolList'),
     chartModal: document.getElementById('chartModal'),
-    chartBox: document.getElementById('chartBox'),
     symbolTitle: document.getElementById('symbolTitle'),
     symbolRankTag: document.getElementById('symbolRankTag'),
-    ma5Badge: document.getElementById('ma5Badge'),
     closeModalBtn: document.getElementById('closeModalBtn'),
     prevBtn: document.getElementById('prevBtn'),
     nextBtn: document.getElementById('nextBtn'),
+    wrapper15m: document.getElementById('wrapper15m'),
     wrapper1h: document.getElementById('wrapper1h'),
     wrapper4h: document.getElementById('wrapper4h'),
+    canvas15m: document.getElementById('klineCanvas15m'),
     canvas1h: document.getElementById('klineCanvas1h'),
     canvas4h: document.getElementById('klineCanvas4h')
   };
 
+  const ctx15m = dom.canvas15m.getContext('2d');
   const ctx1h = dom.canvas1h.getContext('2d');
   const ctx4h = dom.canvas4h.getContext('2d');
 
@@ -258,28 +293,63 @@ canvas { display: block; width: 100%; height: 100%; }
     return ma; 
   } 
 
+  function isBullishAlignment(klinesRaw) {
+    const totalLen = klinesRaw.length;
+    if (totalLen < P3) return null;
+
+    const closes = klinesRaw.map(k => parseFloat(k[4]));
+    const price = closes[totalLen - 1];
+
+    const ma1 = calculateSMA(closes, P1)[totalLen - 1];
+    const ma2 = calculateSMA(closes, P2)[totalLen - 1];
+    const ma3 = calculateSMA(closes, P3)[totalLen - 1];
+
+    if (ma1 > ma2 && ma2 > ma3 && price >= ma3) {
+      const ma3DistPercent = ((price - ma3) / ma3) * 100;
+      return { price, ma3DistPercent };
+    }
+    return null;
+  }
+
   async function fetchSymbolDetailsData(symbol, signal) { 
     try {
-      const res = await fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${P3 + 1}`, { signal }); 
-      if (!res.ok) return null; 
-      const klinesRaw = await res.json(); 
-      const totalLen = klinesRaw.length; 
-      if (totalLen < P3) return null; 
+      const [res15m, res1h, res4h] = await Promise.all([
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=${P3 + 1}`, { signal }),
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${P3 + 1}`, { signal }),
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=${P3 + 1}`, { signal })
+      ]);
 
-      const closes = klinesRaw.map(k => parseFloat(k[4])); 
-      const price = closes[totalLen - 1]; 
+      if (!res15m.ok || !res1h.ok || !res4h.ok) return null;
 
-      const ma1 = calculateSMA(closes, P1)[totalLen - 1]; 
-      const ma2 = calculateSMA(closes, P2)[totalLen - 1]; 
-      const ma3 = calculateSMA(closes, P3)[totalLen - 1]; 
+      const klines15m = await res15m.json();
+      const klines1h = await res1h.json();
+      const klines4h = await res4h.json();
 
-      if (!(ma1 > ma2 && ma2 > ma3 && price >= ma3)) return null; 
+      const bull15m = isBullishAlignment(klines15m);
+      const bull1h = isBullishAlignment(klines1h);
+      const bull4h = isBullishAlignment(klines4h);
 
-      const ma3DistPercent = ((price - ma3) / ma3) * 100; 
+      // 任一週期都不滿足時直接過濾
+      if (!bull15m && !bull1h && !bull4h) return null;
+
+      let matchCount = 0;
+      if (bull15m) matchCount++;
+      if (bull1h) matchCount++;
+      if (bull4h) matchCount++;
+
       const ticker = tickerMap.get(symbol);
       const priceChange24h = ticker ? parseFloat(ticker.priceChangePercent) : 0; 
+      const currentPrice = (bull15m || bull1h || bull4h).price;
 
-      return { symbol, price, ma3DistPercent, priceChange24h }; 
+      return { 
+        symbol, 
+        price: currentPrice, 
+        bull15m,
+        bull1h,
+        bull4h,
+        matchCount,
+        priceChange24h 
+      }; 
     } catch {
       return null;
     }
@@ -326,25 +396,53 @@ canvas { display: block; width: 100%; height: 100%; }
 
     dom.statTotal.innerText = candidateSymbols.length; 
 
-    rawResults = await batchProcess(candidateSymbols, CONCURRENCY_LIMIT, (sym) => fetchSymbolDetailsData(sym), (completed) => {
+    const allMatches = await batchProcess(candidateSymbols, CONCURRENCY_LIMIT, (sym) => fetchSymbolDetailsData(sym), (completed) => {
       dom.progress.style.width = `${(completed / candidateSymbols.length) * 100}%`; 
     });
 
-    rawResults.sort((a, b) => a.ma3DistPercent - b.ma3DistPercent); 
+    // 歸類至 4 個獨立清單
+    results15M = allMatches.filter(m => m.bull15m);
+    results1H = allMatches.filter(m => m.bull1h);
+    results4H = allMatches.filter(m => m.bull4h);
+    resultsMulti = allMatches.filter(m => m.matchCount >= 2);
 
-    dom.statEntry.innerText = rawResults.length; 
+    // 排序
+    results15M.sort((a, b) => a.bull15m.ma3DistPercent - b.bull15m.ma3DistPercent);
+    results1H.sort((a, b) => a.bull1h.ma3DistPercent - b.bull1h.ma3DistPercent);
+    results4H.sort((a, b) => a.bull4h.ma3DistPercent - b.bull4h.ma3DistPercent);
+    resultsMulti.sort((a, b) => b.matchCount - a.matchCount);
+
+    dom.count15m.innerText = results15M.length;
+    dom.count1h.innerText = results1H.length;
+    dom.count4h.innerText = results4H.length;
+    dom.countMulti.innerText = resultsMulti.length;
+
     dom.scanBtn.disabled = false; 
     dom.scanBtn.innerText = "啟動極速掃描"; 
     renderList(); 
   } 
 
+  function getCurrentList() {
+    switch (activeTab) {
+      case '15m': return results15M;
+      case '1h': return results1H;
+      case '4h': return results4H;
+      case 'multi': return resultsMulti;
+      default: return [];
+    }
+  }
+
   function renderList() { 
-    if (rawResults.length === 0) { 
-      dom.symbolList.innerHTML = `<div style="text-align:center; padding:40px; color:#64748b; font-weight:800;">目前無符合條件之標的</div>`; 
+    const currentList = getCurrentList();
+    dom.statEntry.innerText = currentList.length;
+
+    if (currentList.length === 0) { 
+      dom.symbolList.innerHTML = `<div style="text-align:center; padding:40px; color:#64748b; font-weight:800;">目前無符合該條件之標的</div>`; 
       return; 
     } 
+    
     const fragment = document.createDocumentFragment(); 
-    rawResults.forEach((item, index) => { 
+    currentList.forEach((item, index) => { 
       const card = document.createElement('div'); 
       card.className = 'symbol-card'; 
       card.addEventListener('click', () => openChartModal(index)); 
@@ -352,23 +450,41 @@ canvas { display: block; width: 100%; height: 100%; }
       const chg24Class = item.priceChange24h >= 0 ? 'val-up' : 'val-down'; 
       const chg24Sign = item.priceChange24h >= 0 ? '+' : ''; 
 
+      let matchBadges = [];
+      if (item.bull15m) matchBadges.push("15M");
+      if (item.bull1h) matchBadges.push("1H");
+      if (item.bull4h) matchBadges.push("4H");
+
+      const badgeHtml = item.matchCount >= 2 
+        ? `<span class="badge-multi">🔥 ${item.matchCount}週期共振 (${matchBadges.join('+')})</span>`
+        : `<span class="badge-bull">⚡ ${matchBadges.join('/')} 多頭</span>`;
+
+      let distText = '';
+      if (activeTab === '15m' && item.bull15m) {
+        distText = `距 15M 60MA: <span class="val-up">+${item.bull15m.ma3DistPercent.toFixed(2)}%</span>`;
+      } else if (activeTab === '1h' && item.bull1h) {
+        distText = `距 1H 60MA: <span class="val-up">+${item.bull1h.ma3DistPercent.toFixed(2)}%</span>`;
+      } else if (activeTab === '4h' && item.bull4h) {
+        distText = `距 4H 60MA: <span class="val-up">+${item.bull4h.ma3DistPercent.toFixed(2)}%</span>`;
+      } else {
+        distText = `滿足週期: <span class="val-up">${matchBadges.join(', ')}</span>`;
+      }
+
       card.innerHTML = ` 
         <div style="flex: 1;"> 
           <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"> 
             <span class="badge-rank">#${index + 1}</span> 
             <span class="symbol-name">${item.symbol.replace('USDT','')}</span> 
-            <span class="badge-bull">🚀 1H 多頭排列</span> 
+            ${badgeHtml}
           </div> 
-          <div class="detail-row"> 
-            距慢線 (60MA): <span class="val-up">+${item.ma3DistPercent.toFixed(2)}%</span> 
-          </div> 
+          <div class="detail-row"> ${distText} </div> 
           <div class="detail-row"> 
             24H 漲跌幅: <span class="${chg24Class}">${chg24Sign}${item.priceChange24h.toFixed(2)}%</span> 
           </div> 
         </div> 
         <div style="text-align:right;"> 
           <div class="symbol-price">${item.price}</div> 
-          <div style="font-size:0.7rem; color:var(--manga-cyan); margin-top:4px;">點擊看 K 線 📈</div>
+          <div style="font-size:0.7rem; color:var(--manga-cyan); margin-top:4px;">點擊看 3 圖表 📈</div>
         </div> 
       `; 
       fragment.appendChild(card); 
@@ -378,7 +494,6 @@ canvas { display: block; width: 100%; height: 100%; }
 
   let activeChartController = null;
 
-  // 通用 Canvas 繪製函式
   function renderCanvasChart(canvas, wrapper, ctx, klines) {
     const closes = klines.map(k => parseFloat(k[4]));
     const volumes = klines.map(k => parseFloat(k[5]));
@@ -408,11 +523,11 @@ canvas { display: block; width: 100%; height: 100%; }
     const width = rect.width;
     const height = rect.height;
 
-    const padding = { top: 22, bottom: 10, left: 10, right: 55 };
+    const padding = { top: 18, bottom: 8, left: 10, right: 55 };
     const totalH = height - padding.top - padding.bottom;
     
-    const priceH = totalH * 0.65;
-    const volH = totalH * 0.25;
+    const priceH = totalH * 0.62;
+    const volH = totalH * 0.28;
     const volTop = padding.top + priceH + totalH * 0.08;
 
     const chartW = width - padding.left - padding.right;
@@ -443,7 +558,7 @@ canvas { display: block; width: 100%; height: 100%; }
     ctx.textAlign = 'left';
     ctx.lineWidth = 1;
 
-    const gridLines = 3;
+    const gridLines = 2;
     for (let i = 0; i <= gridLines; i++) {
       const y = padding.top + (priceH / gridLines) * i;
       const pVal = maxP - (priceRange / gridLines) * i;
@@ -511,8 +626,6 @@ canvas { display: block; width: 100%; height: 100%; }
 
     drawLine(showVM5, '#00f0ff', getYVol, 1.0);
     drawLine(showVM20, '#9d4edd', getYVol, 1.0);
-
-    return { closes, ma5 };
   }
 
   async function loadAndDrawCharts(symbol) {
@@ -520,32 +633,21 @@ canvas { display: block; width: 100%; height: 100%; }
     activeChartController = new AbortController();
 
     try {
-      // 同時請求 1H 與 4H 的 K 線資料
-      const [res1h, res4h] = await Promise.all([
+      const [res15m, res1h, res4h] = await Promise.all([
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=${KLINE_SHOW_COUNT + P3}`, { signal: activeChartController.signal }),
         fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${KLINE_SHOW_COUNT + P3}`, { signal: activeChartController.signal }),
         fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=${KLINE_SHOW_COUNT + P3}`, { signal: activeChartController.signal })
       ]);
 
-      if (!res1h.ok || !res4h.ok) return;
+      if (!res15m.ok || !res1h.ok || !res4h.ok) return;
 
+      const klines15m = await res15m.json();
       const klines1h = await res1h.json();
       const klines4h = await res4h.json();
 
-      const result1h = renderCanvasChart(dom.canvas1h, dom.wrapper1h, ctx1h, klines1h);
+      renderCanvasChart(dom.canvas15m, dom.wrapper15m, ctx15m, klines15m);
+      renderCanvasChart(dom.canvas1h, dom.wrapper1h, ctx1h, klines1h);
       renderCanvasChart(dom.canvas4h, dom.wrapper4h, ctx4h, klines4h);
-
-      // 更新 1H 5MA 狀態 Badge
-      const lastPrice = result1h.closes[result1h.closes.length - 1];
-      const lastMA5 = result1h.ma5[result1h.ma5.length - 1];
-      if (lastPrice !== undefined && lastMA5 !== null) {
-        if (lastPrice >= lastMA5) {
-          dom.ma5Badge.className = 'ma5-status-badge above';
-          dom.ma5Badge.innerText = '🟢 1H 5MA 之上';
-        } else {
-          dom.ma5Badge.className = 'ma5-status-badge below';
-          dom.ma5Badge.innerText = '🔴 1H 5MA 之下';
-        }
-      }
 
     } catch (err) {
       if (err.name !== 'AbortError') console.error(err);
@@ -553,9 +655,10 @@ canvas { display: block; width: 100%; height: 100%; }
   }
 
   function openChartModal(index) {
-    if (index < 0 || index >= rawResults.length) return;
+    const currentList = getCurrentList();
+    if (index < 0 || index >= currentList.length) return;
     currentIndex = index;
-    const item = rawResults[currentIndex];
+    const item = currentList[currentIndex];
 
     dom.symbolRankTag.innerText = `#${currentIndex + 1}`;
     dom.symbolTitle.innerText = item.symbol;
@@ -575,14 +678,15 @@ canvas { display: block; width: 100%; height: 100%; }
   }
 
   function navigateSymbol(direction) {
-    if (currentIndex === -1 || rawResults.length === 0) return;
+    const currentList = getCurrentList();
+    if (currentIndex === -1 || currentList.length === 0) return;
     let newIndex = currentIndex + direction;
-    if (newIndex < 0) newIndex = rawResults.length - 1; 
-    if (newIndex >= rawResults.length) newIndex = 0; 
+    if (newIndex < 0) newIndex = currentList.length - 1; 
+    if (newIndex >= currentList.length) newIndex = 0; 
     openChartModal(newIndex);
   }
 
-  // 手勢滑動 (Touch Events) 處理
+  // 手勢滑動處理
   let touchStartX = 0, touchStartY = 0;
   let touchEndX = 0, touchEndY = 0;
 
@@ -607,6 +711,19 @@ canvas { display: block; width: 100%; height: 100%; }
     }
   }
 
+  // 頁籤切換事件綁定
+  function switchTab(tabKey, targetBtn) {
+    activeTab = tabKey;
+    [dom.tab15m, dom.tab1h, dom.tab4h, dom.tabMulti].forEach(b => b.classList.remove('active'));
+    targetBtn.classList.add('active');
+    renderList();
+  }
+
+  dom.tab15m.addEventListener('click', () => switchTab('15m', dom.tab15m));
+  dom.tab1h.addEventListener('click', () => switchTab('1h', dom.tab1h));
+  dom.tab4h.addEventListener('click', () => switchTab('4h', dom.tab4h));
+  dom.tabMulti.addEventListener('click', () => switchTab('multi', dom.tabMulti));
+
   // 事件監聽
   dom.scanBtn.addEventListener('click', startScan);
   dom.closeModalBtn.addEventListener('click', closeChartModal);
@@ -625,8 +742,9 @@ canvas { display: block; width: 100%; height: 100%; }
   });
 
   window.addEventListener('resize', () => {
-    if (dom.chartModal.classList.contains('active') && currentIndex !== -1) {
-      loadAndDrawCharts(rawResults[currentIndex].symbol);
+    const currentList = getCurrentList();
+    if (dom.chartModal.classList.contains('active') && currentIndex !== -1 && currentList[currentIndex]) {
+      loadAndDrawCharts(currentList[currentIndex].symbol);
     }
   });
 })();
