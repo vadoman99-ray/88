@@ -211,11 +211,11 @@ canvas { display: block; width: 100%; height: 100%; }
 
     <div class="charts-wrapper">
       <div class="chart-panel" id="wrapper15m">
-        <span class="panel-tag">15M 時間框架 (80根)</span>
+        <span class="panel-tag">15M 時間框架 (100根)</span>
         <canvas id="klineCanvas15m"></canvas>
       </div>
       <div class="chart-panel" id="wrapper1h">
-        <span class="panel-tag">1H 時間框架 (70根)</span>
+        <span class="panel-tag">1H 時間框架 (80根)</span>
         <canvas id="klineCanvas1h"></canvas>
       </div>
       <div class="chart-panel" id="wrapper4h">
@@ -231,13 +231,15 @@ canvas { display: block; width: 100%; height: 100%; }
   const API_BASE = 'https://fapi.binance.com'; 
   const P0 = 5, P1 = 30, P2 = 45, P3 = 60; 
   const MIN_VOLUME = 100000000;
-  
-  // 各週期抓取的 K 線數量直接對應需求
-  const LIMIT_15M = 80;
-  const LIMIT_1H = 70;
-  const LIMIT_4H = 60;
+  const CONCURRENCY_LIMIT = 15;
 
-  const CONCURRENCY_LIMIT = 20; // 提高並發數以極大化下載速度
+  // 依照需求各別設定顯示的 K 線根數
+  const COUNT_15M = 100;
+  const COUNT_1H = 80;
+  const COUNT_4H = 60;
+
+  // 掃描時為了確保算得出 60MA，需要抓取的最小數量
+  const FETCH_LIMIT = P3 + 60; 
 
   let results15M = [];
   let results1H = []; 
@@ -305,7 +307,7 @@ canvas { display: block; width: 100%; height: 100%; }
     const ma2 = calculateSMA(closes, P2)[totalLen - 1];
     const ma3 = calculateSMA(closes, P3)[totalLen - 1];
 
-    if (ma1 > ma2 && ma2 > ma3 && price >= ma3) {
+    if (ma1 !== null && ma2 !== null && ma3 !== null && ma1 > ma2 && ma2 > ma3 && price >= ma3) {
       const ma3DistPercent = ((price - ma3) / ma3) * 100;
       return { price, ma3DistPercent };
     }
@@ -314,11 +316,10 @@ canvas { display: block; width: 100%; height: 100%; }
 
   async function fetchSymbolDetailsData(symbol, signal) { 
     try {
-      // 依各週期精準拉取對應根數，減少網路傳輸量與運算負擔
       const [res15m, res1h, res4h] = await Promise.all([
-        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=${LIMIT_15M}`, { signal }),
-        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${LIMIT_1H}`, { signal }),
-        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=${LIMIT_4H}`, { signal })
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=${FETCH_LIMIT}`, { signal }),
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${FETCH_LIMIT}`, { signal }),
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=${FETCH_LIMIT}`, { signal })
       ]);
 
       if (!res15m.ok || !res1h.ok || !res4h.ok) return null;
@@ -493,19 +494,30 @@ canvas { display: block; width: 100%; height: 100%; }
 
   let activeChartController = null;
 
-  function renderCanvasChart(canvas, wrapper, ctx, klines) {
-    const showK = klines;
-    const showLen = showK.length;
-    const closes = showK.map(k => parseFloat(k[4]));
-    const volumes = showK.map(k => parseFloat(k[5]));
+  function renderCanvasChart(canvas, wrapper, ctx, klinesRaw, showCount) {
+    // 關鍵修正：先針對完整數據計算出全域的 MA / VM 陣列，確保均線從頭到尾連續不斷掉
+    const closesAll = klinesRaw.map(k => parseFloat(k[4]));
+    const volumesAll = klinesRaw.map(k => parseFloat(k[5]));
 
-    const ma5 = calculateSMA(closes, P0);
-    const ma30 = calculateSMA(closes, P1);
-    const ma45 = calculateSMA(closes, P2);
-    const ma60 = calculateSMA(closes, P3);
+    const ma5All = calculateSMA(closesAll, P0);
+    const ma30All = calculateSMA(closesAll, P1);
+    const ma45All = calculateSMA(closesAll, P2);
+    const ma60All = calculateSMA(closesAll, P3);
 
-    const vm5 = calculateSMA(volumes, 5);
-    const vm20 = calculateSMA(volumes, 20);
+    const vm5All = calculateSMA(volumesAll, 5);
+    const vm20All = calculateSMA(volumesAll, 20);
+
+    // 擷取指定要顯示的尾端根數
+    const actualShowCount = Math.min(showCount, klinesRaw.length);
+    const showK = klinesRaw.slice(-actualShowCount);
+    
+    // 同步截取對應尾端的均線數值，使均線線段完美對齊圖表左到右
+    const showMA5 = ma5All.slice(-actualShowCount);
+    const showMA30 = ma30All.slice(-actualShowCount);
+    const showMA45 = ma45All.slice(-actualShowCount);
+    const showMA60 = ma60All.slice(-actualShowCount);
+    const showVM5 = vm5All.slice(-actualShowCount);
+    const showVM20 = vm20All.slice(-actualShowCount);
 
     const rect = wrapper.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -541,7 +553,7 @@ canvas { display: block; width: 100%; height: 100%; }
     const priceRange = maxP - minP || 1;
     const getYPrice = (p) => padding.top + priceH - ((p - minP) / priceRange) * priceH;
     const getYVol = (v) => volTop + volH - (v / (maxVol || 1)) * volH;
-    const barWidth = chartW / showLen;
+    const barWidth = chartW / actualShowCount;
 
     ctx.clearRect(0, 0, width, height);
 
@@ -612,13 +624,13 @@ canvas { display: block; width: 100%; height: 100%; }
       ctx.stroke();
     };
 
-    drawLine(ma5, '#00ff66', getYPrice);
-    drawLine(ma30, '#ffea00', getYPrice);
-    drawLine(ma45, '#ff9100', getYPrice);
-    drawLine(ma60, '#ff007f', getYPrice);
+    drawLine(showMA5, '#00ff66', getYPrice);
+    drawLine(showMA30, '#ffea00', getYPrice);
+    drawLine(showMA45, '#ff9100', getYPrice);
+    drawLine(showMA60, '#ff007f', getYPrice);
 
-    drawLine(vm5, '#00f0ff', getYVol, 1.0);
-    drawLine(vm20, '#9d4edd', getYVol, 1.0);
+    drawLine(showVM5, '#00f0ff', getYVol, 1.0);
+    drawLine(showVM20, '#9d4edd', getYVol, 1.0);
   }
 
   async function loadAndDrawCharts(symbol) {
@@ -626,10 +638,15 @@ canvas { display: block; width: 100%; height: 100%; }
     activeChartController = new AbortController();
 
     try {
+      // 確保抓取的 K 線數量足以涵蓋各週期要求的顯示根數 + 60根計算MA所需空間
+      const limit15m = COUNT_15M + P3;
+      const limit1h = COUNT_1H + P3;
+      const limit4h = COUNT_4H + P3;
+
       const [res15m, res1h, res4h] = await Promise.all([
-        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=${LIMIT_15M}`, { signal: activeChartController.signal }),
-        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${LIMIT_1H}`, { signal: activeChartController.signal }),
-        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=${LIMIT_4H}`, { signal: activeChartController.signal })
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=${limit15m}`, { signal: activeChartController.signal }),
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${limit1h}`, { signal: activeChartController.signal }),
+        fetch(`${API_BASE}/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=${limit4h}`, { signal: activeChartController.signal })
       ]);
 
       if (!res15m.ok || !res1h.ok || !res4h.ok) return;
@@ -638,9 +655,9 @@ canvas { display: block; width: 100%; height: 100%; }
       const klines1h = await res1h.json();
       const klines4h = await res4h.json();
 
-      renderCanvasChart(dom.canvas15m, dom.wrapper15m, ctx15m, klines15m);
-      renderCanvasChart(dom.canvas1h, dom.wrapper1h, ctx1h, klines1h);
-      renderCanvasChart(dom.canvas4h, dom.wrapper4h, ctx4h, klines4h);
+      renderCanvasChart(dom.canvas15m, dom.wrapper15m, ctx15m, klines15m, COUNT_15M);
+      renderCanvasChart(dom.canvas1h, dom.wrapper1h, ctx1h, klines1h, COUNT_1H);
+      renderCanvasChart(dom.canvas4h, dom.wrapper4h, ctx4h, klines4h, COUNT_4H);
 
     } catch (err) {
       if (err.name !== 'AbortError') console.error(err);
@@ -737,14 +754,10 @@ canvas { display: block; width: 100%; height: 100%; }
     resizeTimer = setTimeout(() => {
       const currentList = getCurrentList();
       if (dom.chartModal.classList.contains('active') && currentIndex !== -1 && currentList[currentIndex]) {
-        loadAndDropChartsIfNeeded(currentList[currentIndex].symbol);
+        loadAndDrawCharts(currentList[currentIndex].symbol);
       }
     }, 150);
   });
-
-  function loadAndDropChartsIfNeeded(symbol) {
-    loadAndDrawCharts(symbol);
-  }
 })();
 </script> 
 </body> 
