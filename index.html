@@ -1,1 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>幣圈 1H 多頭排列與拉回轉折篩選器 (進階優化版)</title>
+    <style>
+        :root {
+            --bg-color: #12161c;
+            --panel-bg: #1e2329;
+            --text-color: #eaecef;
+            --text-muted: #848e9c;
+            --up-color: #0ecb81;
+            --down-color: #f6465d;
+            --accent-color: #f0b90b;
+            --border-color: #2b313a;
+        }
 
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 15px;
+        }
+
+        @media (max-width: 900px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid var(--border-color);
+        }
+
+        h2, h3 {
+            margin-top: 0;
+            color: var(--accent-color);
+        }
+
+        .control-group {
+            margin-bottom: 12px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent-color);
+            color: #000;
+            font-weight: bold;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            background: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        .symbol-list {
+            list-style: none;
+            padding: 0;
+            margin: 10px 0 0 0;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .symbol-item {
+            padding: 10px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .symbol-item:hover, .symbol-item.active {
+            background-color: rgba(240, 185, 11, 0.1);
+        }
+
+        .symbol-item .ticker { font-weight: bold; }
+        .symbol-item .volume { font-size: 12px; color: var(--text-muted); }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .status-bar {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="panel">
+        <h2>篩選器條件設定</h2>
+        <div class="control-group">
+            <label>24H 成交量門檻 (USDT)</label>
+            <input type="number" id="minVolume" value="100000000">
+        </div>
+        <div class="control-group">
+            <label>Telegram Bot Token (選填)</label>
+            <input type="text" id="tgToken" placeholder="Bot Token">
+        </div>
+        <div class="control-group">
+            <label>Telegram Chat ID (選填)</label>
+            <input type="text" id="tgChatId" placeholder="Chat ID">
+        </div>
+        <button id="startBtn" onclick="runScanner()">開始掃描</button>
+        <div class="status-bar" id="statusBar">等待執行...</div>
+
+        <h3>符合標的 (<span id="matchCount">0</span>)</h3>
+        <ul class="symbol-list" id="symbolList"></ul>
+    </div>
+
+    <div class="panel chart-container">
+        <h3 id="chartTitle">請選擇標的</h3>
+        <canvas id="klineCanvas"></canvas>
+    </div>
+</div>
+
+<script>
+    let matchedSymbols = [];
+    let currentSymbolData = null;
+    let selectedIndex = -1;
+    const CONCURRENCY_LIMIT = 8; // 降低動態並發避免 API 429 Limit
+
+    // 技術指標計算 (優化版)
+    function calculateSMA(data, period) {
+        let sma = new Array(data.length).fill(null);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+            sum += data[i].close;
+            if (i >= period) sum -= data[i - period].close;
+            if (i >= period - 1) sma[i] = sum / period;
+        }
+        return sma;
+    }
+
+    function calculateRSI(data, period = 14) {
+        let rsi = new Array(data.length).fill(null);
+        if (data.length <= period) return rsi;
+
+        let gains = 0, losses = 0;
+        for (let i = 1; i <= period; i++) {
+            let change = data[i].close - data[i - 1].close;
+            if (change >= 0) gains += change;
+            else losses -= change;
+        }
+
+        let avgGain = gains / period;
+        let avgLoss = losses / period;
+        rsi[period] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
+
+        for (let i = period + 1; i < data.length; i++) {
+            let change = data[i].close - data[i - 1].close;
+            let gain = change >= 0 ? change : 0;
+            let loss = change < 0 ? -change : 0;
+
+            avgGain = (avgGain * (period - 1) + gain) / period;
+            avgLoss = (avgLoss * (period - 1) + loss) / period;
+
+            rsi[i] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
+        }
+        return rsi;
+    }
+
+    // 主流程 API 取得與篩選
+    async function runScanner() {
+        const startBtn = document.getElementById('startBtn');
+        const statusBar = document.getElementById('statusBar');
+        const minVol = parseFloat(document.getElementById('minVolume').value);
+        
+        startBtn.disabled = true;
+        statusBar.innerText = "正在取得 24H 行情資料...";
+        
+        try {
+            const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
+            const tickers = await res.json();
+            
+            const validSymbols = tickers.filter(t => 
+                t.symbol.endsWith('USDT') && parseFloat(t.quoteVolume) >= minVol
+            );
+
+            statusBar.innerText = `符合成交量標的：${validSymbols.length} 個，開始解析 K 線...`;
+            
+            matchedSymbols = [];
+            document.getElementById('symbolList').innerHTML = '';
+            
+            // 批次並發處理 API
+            for (let i = 0; i < validSymbols.length; i += CONCURRENCY_LIMIT) {
+                const chunk = validSymbols.slice(i, i + CONCURRENCY_LIMIT);
+                await Promise.all(chunk.map(symbolInfo => checkSymbolStrategy(symbolInfo)));
+                statusBar.innerText = `掃描進度: ${Math.min(i + CONCURRENCY_LIMIT, validSymbols.length)} / ${validSymbols.length}`;
+            }
+
+            statusBar.innerText = `掃描完成！符合條件標的：${matchedSymbols.length} 個`;
+            document.getElementById('matchCount').innerText = matchedSymbols.length;
+
+            if (matchedSymbols.length > 0) {
+                selectSymbol(0);
+                sendTelegramNotification();
+            }
+
+        } catch (err) {
+            statusBar.innerText = "掃描過程發生錯誤: " + err.message;
+        } finally {
+            startBtn.disabled = false;
+        }
+    }
+
+    async function checkSymbolStrategy(tickerInfo) {
+        try {
+            const symbol = tickerInfo.symbol;
+            const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=100`);
+            const klines = await res.json();
+            
+            if (!Array.isArray(klines) || klines.length < 65) return;
+
+            const parsedData = klines.map(k => ({
+                time: k[0], open: parseFloat(k[1]), high: parseFloat(k[2]), 
+                low: parseFloat(k[3]), close: parseFloat(k[4]), vol: parseFloat(k[5])
+            }));
+
+            const ma5 = calculateSMA(parsedData, 5);
+            const ma30 = calculateSMA(parsedData, 30);
+            const ma45 = calculateSMA(parsedData, 45);
+            const ma60 = calculateSMA(parsedData, 60);
+
+            const rsi5 = calculateRSI(parsedData, 5);
+            const rsi20 = calculateRSI(parsedData, 20);
+
+            const len = parsedData.length - 1; // 最新完成的 K 棒
+            const prev = len - 1;
+
+            // 條件 1: 多頭排列 (5 > 30 > 45 > 60)
+            const isBullishAlign = ma5[len] > ma30[len] && ma30[len] > ma45[len] && ma45[len] > ma60[len] && parsedData[len].close > ma60[len];
+
+            // 條件 2: 下探 5MA 後收陽轉折
+            const isPullback5MA = (parsedData[prev].low <= ma5[prev] || parsedData[len].low <= ma5[len]);
+            const isBullishCandle = parsedData[len].close > parsedData[len].open;
+
+            // 條件 3: RSI 條件 (5RSI 回檔，20RSI 仍高於 50)
+            const rsiCondition = (rsi5[prev] < 50 || rsi5[len] < 50) && rsi20[len] > 50;
+
+            if (isBullishAlign && isPullback5MA && isBullishCandle && rsiCondition) {
+                const item = { symbol, data: parsedData, ma5, ma30, ma45, ma60, rsi5, rsi20, volume: parseFloat(tickerInfo.quoteVolume) };
+                matchedSymbols.push(item);
+                renderListItem(item, matchedSymbols.length - 1);
+            }
+        } catch (e) {
+            // 忽略單一幣種網絡請求錯誤
+        }
+    }
+
+    function renderListItem(item, index) {
+        const ul = document.getElementById('symbolList');
+        const li = document.createElement('li');
+        li.className = 'symbol-item';
+        li.onclick = () => selectSymbol(index);
+        
+        const volMillion = (item.volume / 1000000).toFixed(1);
+        li.innerHTML = `<span class="ticker">${item.symbol}</span><span class="volume">${volMillion}M USDT</span>`;
+        ul.appendChild(li);
+    }
+
+    function selectSymbol(index) {
+        if (index < 0 || index >= matchedSymbols.length) return;
+        selectedIndex = index;
+        
+        const items = document.querySelectorAll('.symbol-item');
+        items.forEach((el, idx) => el.classList.toggle('active', idx === index));
+        
+        currentSymbolData = matchedSymbols[index];
+        document.getElementById('chartTitle').innerText = `${currentSymbolData.symbol} - 1H K線圖`;
+        drawChart();
+    }
+
+    // Canvas 高畫質 K 線繪製引擎
+    function drawChart() {
+        if (!currentSymbolData) return;
+
+        const canvas = document.getElementById('klineCanvas');
+        const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+
+        // 畫布自適應解析度縮放
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+
+        const width = rect.width;
+        const height = rect.height;
+        ctx.clearRect(0, 0, width, height);
+
+        const data = currentSymbolData.data.slice(-60); // 畫最後 60 根
+        const klineCount = data.length;
+        const candleWidth = width / klineCount;
+
+        // 計算價格繪圖視窗界限
+        let minPrice = Infinity, maxPrice = -Infinity;
+        data.forEach(d => {
+            minPrice = Math.min(minPrice, d.low);
+            maxPrice = Math.max(maxPrice, d.high);
+        });
+        const priceRange = maxPrice - minPrice || 1;
+
+        function getY(price) {
+            return height - ((price - minPrice) / priceRange) * (height - 40) - 20;
+        }
+
+        // 繪製 K 棒與均線
+        data.forEach((d, i) => {
+            const x = i * candleWidth + candleWidth / 2;
+            const openY = getY(d.open);
+            const closeY = getY(d.close);
+            const highY = getY(d.high);
+            const lowY = getY(d.low);
+
+            const isUp = d.close >= d.open;
+            ctx.strokeStyle = isUp ? '#0ecb81' : '#f6465d';
+            ctx.fillStyle = isUp ? '#0ecb81' : '#f6465d';
+
+            // 影線
+            ctx.beginPath();
+            ctx.moveTo(x, highY);
+            ctx.lineTo(x, lowY);
+            ctx.stroke();
+
+            // 實體
+            const bodyY = Math.min(openY, closeY);
+            const bodyH = Math.max(Math.abs(closeY - openY), 1);
+            ctx.fillRect(x - candleWidth * 0.35, bodyY, candleWidth * 0.7, bodyH);
+        });
+    }
+
+    // Telegram 自動推播通知
+    async function sendTelegramNotification() {
+        const token = document.getElementById('tgToken').value.trim();
+        const chatId = document.getElementById('tgChatId').value.trim();
+        
+        if (!token || !chatId || matchedSymbols.length === 0) return;
+
+        const topTargets = matchedSymbols.slice(0, 10).map(s => `• <b>${s.symbol}</b> (24H Vol: ${(s.volume/1e6).toFixed(1)}M)`).join('\n');
+        const text = `🚀 <b>1H 多頭轉折篩選完成</b>\n\n符合標的總數：${matchedSymbols.length}\n前 10 大標的：\n${topTargets}`;
+
+        try {
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })
+            });
+        } catch (e) {
+            console.error("TG 發送失敗", e);
+        }
+    }
+
+    // 鍵盤切換防抖與事件綁定
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(drawChart, 150);
+    });
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') selectSymbol(selectedIndex - 1);
+        if (e.key === 'ArrowDown' || e.key === 'ArrowRight') selectSymbol(selectedIndex + 1);
+    });
+</script>
+
+</body>
+</html>
